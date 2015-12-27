@@ -8,6 +8,47 @@ angular.module('ionic_udemy.services', [])
   };
 })
 
+.service('modalService', function($ionicModal) {
+  this.openModal = function(id) {
+    var _this = this;
+
+    if(id == 1) {
+    $ionicModal.fromTemplateUrl('templates/search.html', {
+      scope: null,
+      controller: 'SearchCtrl'
+    }).then(function(modal) {
+      _this.modal = modal;
+      _this.modal.show();
+    });
+    }
+
+    else if(id == 2) {
+    $ionicModal.fromTemplateUrl('templates/login.html', {
+      scope: $scope
+    }).then(function(modal) {
+      $scope.modal = modal;
+    });
+    }
+
+    else if (id == 3) {
+    $ionicModal.fromTemplateUrl('templates/login.html', {
+      scope: $scope
+    }).then(function(modal) {
+      $scope.modal = modal;
+    });
+  }
+
+  };
+
+  this.closeModal = function(id) {
+    var _this = this;
+
+    if(!_this.modal) return;
+    _this.modal.hide();
+    _this.modal.remove();
+  };
+})
+
 .factory('dateService', function($filter) {
   var currentDate = function() {
     var d = new Date();
@@ -75,10 +116,6 @@ angular.module('ionic_udemy.services', [])
   return notesCache;
 })
 
-.factory('fillMyStocksCacheService', function(CacheFactory) {
-  if(ChaheFactory.get())
-})
-
 .factory('stockDataService', function($q, $http, encodeURIService, stockDetailsCacheService) {
 
   var getDetailsData = function(ticker) {
@@ -90,50 +127,50 @@ angular.module('ionic_udemy.services', [])
     query = 'select * from yahoo.finance.quotes where symbol IN ("' + ticker + '")',
     url = 'http://query.yahooapis.com/v1/public/yql?q=' + encodeURIService.encode(query) + '&format=json&env=http://datatables.org/alltables.env';
 
-  if(stockDetailsCache) {
-    deferred.resolve(stockDetailsCache);
-  }
-  else {
-  $http.get(url)
-            .success(function(json) {
-              var jsonData = json.query.results.quote;
-              deferred.resolve(jsonData);
-              stockDetailsCacheService.put(cacheKey, jsonData);
-            })
-            .error(function(error) {
-              console.log("Details data error: " + error);
-              deferred.reject();
-            });
-  }
+    if(stockDetailsCache) {
+      deferred.resolve(stockDetailsCache);
+    }
+    else {
+    $http.get(url)
+              .success(function(json) {
+                var jsonData = json.query.results.quote;
+                deferred.resolve(jsonData);
+                stockDetailsCacheService.put(cacheKey, jsonData);
+              })
+              .error(function(error) {
+                console.log("Details data error: " + error);
+                deferred.reject();
+              });
+    }
 
-  return deferred.promise;
+    return deferred.promise;
 
-  };
+    };
 
-  var getPriceData = function(ticker) {
+    var getPriceData = function(ticker) {
 
-  var deferred = $q.defer(),
-  url = "http://finance.yahoo.com/webservice/v1/symbols/" + ticker + "/quote?format=json&view=detail";
+    var deferred = $q.defer(),
+    url = "http://finance.yahoo.com/webservice/v1/symbols/" + ticker + "/quote?format=json&view=detail";
 
-  $http.get(url)
-            .success(function(json) {
-              var jsonData = json.list.resources[0].resource.fields;
-              deferred.resolve(jsonData);
-            })
-            .error(function(error) {
-              console.log("Price data error: " + error);
-              deferred.reject();
-            });
+    $http.get(url)
+              .success(function(json) {
+                var jsonData = json.list.resources[0].resource.fields;
+                deferred.resolve(jsonData);
+              })
+              .error(function(error) {
+                console.log("Price data error: " + error);
+                deferred.reject();
+              });
 
-  return deferred.promise;
+    return deferred.promise;
 
-  };
+    };
 
- return {
-   getPriceData: getPriceData,
-   getDetailsData: getDetailsData
-  };
-})
+   return {
+     getPriceData: getPriceData,
+     getDetailsData: getDetailsData
+    };
+  })
 
 .factory('chartDataService', function($q, $http, encodeURIService, chartDataCacheService) {
 
@@ -259,18 +296,88 @@ angular.module('ionic_udemy.services', [])
   };
 })
 
-.factory('followStockService', function() {
+.factory('fillMyStocksCacheService', function(CacheFactory) {
+
+  var myStocksCache;
+
+  if(!CacheFactory.get('myStocksCache')) {
+    myStocksCache = CacheFactory('myStocksCache', {
+      storageMode: 'localStorage'
+    });
+  }
+  else {
+    myStocksCache = CacheFactory.get('myStocksCache');
+  }
+
+  var fillMyStocksCache = function() {
+    var myStocksArray = [
+      {ticker: "AAPL"},
+      {ticker: "GPRO"},
+      {ticker: "FB"},
+      {ticker: "NFLX"},
+      {ticker: "TSLA"},
+      {ticker: "BRK-A"},
+      {ticker: "INTC"},
+      {ticker: "MSFT"},
+      {ticker: "GE"},
+      {ticker: "BAC"},
+      {ticker: "C"},
+      {ticker: "T"}
+      ];
+
+      myStocksCache.put('myStocks', myStocksArray);
+  };
+  return {
+    fillMyStocksCache: fillMyStocksCache
+  };
+})
+
+.factory('myStocksCacheService', function(CacheFactory) {
+  var myStocksCache = CacheFactory.get('myStocksCache');
+  return myStocksCache;
+})
+
+.factory('myStocksArrayService', function(fillMyStocksCacheService, myStocksCacheService) {
+  if(!myStocksCacheService.info('myStocks')) {
+    fillMyStocksCacheService.fillMyStocksCache();
+  }
+
+  var myStocks = myStocksCacheService.get('myStocks');
+
+  return myStocks;
+})
+
+.factory('followingStockService', function(myStocksCacheService, myStocksArrayService) {
   return {
     follow: function(ticker) {
+
+      var stockToAdd = {"ticker": ticker};
+
+      myStocksArrayService.push(stockToAdd);
+      myStocksCacheService.put('myStocks', myStocksArrayService);
 
     },
 
     unfollow: function(ticker) {
+      for(var i = 0; i < myStocksArrayService.length; i++) {
+        if(myStocksArrayService[i].ticker == ticker) {
+          myStocksArrayService.splice(i, 1);
+          myStocksCacheService.remove('myStocks');
+          myStocksCacheService.put('myStocks', myStocksArrayService);
 
+          break;
+        }
+      }
     },
 
     checkFollowing: function(ticker) {
 
+      for (var i = 0; i < myStocksArrayService.length; i++) {
+        if(myStocksArrayService[i].ticker == ticker) {
+          return true;
+        }
+      }
+      return false;
     }
   };
 })
