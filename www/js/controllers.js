@@ -40,8 +40,8 @@ angular.module('ionic_udemy.controllers', [])
     };
 }])
 
-.controller('StockCtrl', ['$scope', '$stateParams', '$window', '$ionicPopup', 'followingStockService', 'stockDataService', 'dateService', 'chartDataService', 'notesService', 'newsService',
-function($scope, $stateParams, $window, $ionicPopup, followingStockService, stockDataService, dateService, chartDataService, notesService, newsService) {
+.controller('StockCtrl', ['$scope', '$stateParams', '$window', '$ionicPopup', '$cordovaInAppBrowser', 'followingStockService', 'stockDataService', 'dateService', 'chartDataService', 'notesService', 'newsService',
+function($scope, $stateParams, $window, $ionicPopup, $cordovaInAppBrowser, followingStockService, stockDataService, dateService, chartDataService, notesService, newsService) {
 
   $scope.ticker = $stateParams.stockTicker;
   $scope.chartView = 4;
@@ -71,7 +71,13 @@ function($scope, $stateParams, $window, $ionicPopup, followingStockService, stoc
   };
 
   $scope.openWindow = function(link) {
-    // TODO
+    var inAppBrowserOptions = {
+      location: 'yes',
+      clearCache: 'yes',
+      toolbar: 'yes'
+    };
+
+    $cordovaInAppBrowser.open(link, '_blank', inAppBrowserOptions);
   };
 
   $scope.chartViewFunc = function(n) {
