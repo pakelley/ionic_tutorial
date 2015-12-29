@@ -1,5 +1,7 @@
 angular.module('ionic_udemy.services', [])
 
+.constant('FIREBASE_URL', 'https://fiery-heat-4824.firebaseio.com/')
+
 .factory('encodeURIService', function() {
   return {
     encode: function(string) {
@@ -24,19 +26,23 @@ angular.module('ionic_udemy.services', [])
 
     else if(id == 2) {
     $ionicModal.fromTemplateUrl('templates/login.html', {
-      scope: $scope
+      scope: null,
+      controller: 'LoginSignupCtrl'
     }).then(function(modal) {
-      $scope.modal = modal;
+      _this.modal = modal;
+      _this.modal.show();
     });
     }
 
     else if (id == 3) {
-    $ionicModal.fromTemplateUrl('templates/login.html', {
-      scope: $scope
+    $ionicModal.fromTemplateUrl('templates/signup.html', {
+      scope: null,
+      controller: 'LoginSignupCtrl'
     }).then(function(modal) {
-      $scope.modal = modal;
+      _this.modal = modal;
+      _this.modal.show();
     });
-  }
+    }
 
   };
 
@@ -65,6 +71,146 @@ angular.module('ionic_udemy.services', [])
   return {
     currentDate: currentDate,
     oneYearAgoDate: oneYearAgoDate
+  };
+})
+
+.factory('firebaseRef', function($firebase, FIREBASE_URL) {
+
+  var firebaseRef = new Firebase(FIREBASE_URL);
+
+  return firebaseRef;
+})
+
+.factory('firebaseUserRef', function(firebaseRef) {
+  var userRef = firebaseRef.child('users');
+  return userRef;
+})
+
+.factory('userService', function($rootScope, $window, $timeout, firebaseRef, firebaseUserRef, modalService, myStocksArrayService, notesCacheService, myStocksCacheService) {
+
+  var login = function(user, signup) {
+
+    firebaseRef.authWithPassword({
+      email    : user.email,
+      password : user.password
+    }, function(error, authData) {
+      if (error) {
+        console.log("Login Failed!", error);
+      } else {
+        console.log("Login Succesful");
+        $rootScope.currentUser = authData;
+
+        if(signup) {
+          modalService.closeModal();
+        }
+        else {
+          myStocksCacheService.removeAll();
+          notesCacheService.removeAll();
+
+          loadUserData(authData);
+
+          modalService.closeModal();
+          $timeout(function() {
+            $window.location.reload(true);
+          }, 400);
+        }
+      }
+    });
+  };
+
+  var signup = function(user) {
+
+    firebaseRef.createUser({
+      email    : user.email,
+      password : user.password
+    }, function(error, userData) {
+      if (error) {
+        console.log("Error creating user:", error);
+      } else {
+        console.log("Successfully created ", userData.uid);
+        login(user, true);
+        firebaseRef.child('emails').push(user.email);
+        firebaseUserRef.child(userData.uid).child('stocks').set(myStocksArrayService);
+
+        var stocksWithNotes = notesCacheService.keys();
+
+        stocksWithNotes.forEach(function(stockWithNotes) {
+          var notes = notesCacheService.get(stockWithNotes);
+
+          notes.forEach(function(note) {
+            firebaseUserRef.child(userData.uid).child('notes').child(note.ticker).push(note);
+          });
+        });
+      }
+    });
+  };
+
+  var logout = function() {
+    firebaseRef.unauth();
+    notesCacheService.removeAll();
+    myStocksCacheService.removeAll();
+    $window.location.reload(true);
+    $rootScope.currentUser = '';
+  };
+
+  var updateStocks = function(stocks) {
+    firebaseUserRef.child(getUser().uid).child('stocks').set(stocks);
+  };
+
+  var updateNotes = function(ticker, notes) {
+    firebaseUserRef.child(getUser().uid).child('notes').child(ticker).remove();
+    notes.forEach(function(note) {
+      firebaseUserRef.child(getUser().uid).child('notes').child(note.ticker).push(note);
+    });
+  };
+
+  var loadUserData = function(authData) {
+
+    firebaseUserRef.child(authData.uid).child('stocks').once('value', function(snapshot) {
+      var stocksFromDatabase = [];
+
+      snapshot.val().forEach(function(stock) {
+        var stockToAdd = {ticker: stock.ticker};
+        stocksFromDatabase.push(stockToAdd);
+      });
+
+      myStocksCacheService.put('myStocks', stocksFromDatabase);
+    },
+    function(error) {
+      console.log("Firebase error –> stocks" + error);
+    });
+
+    firebaseUserRef.child(authData.uid).child('notes').once('value', function(snapshot) {
+
+      snapshot.forEach(function(stocksWithNotes) {
+        var notesFromDatabase = [];
+        stocksWithNotes.forEach(function(note) {
+          notesFromDatabase.push(note.val());
+          var cacheKey = note.child('ticker').val();
+          notesCacheService.put(cacheKey, notesFromDatabase);
+        });
+      });
+    },
+    function(error) {
+      console.log("Firebase error –> notes: " + error);
+    });
+  };
+
+  var getUser = function() {
+    return firebaseRef.getAuth();
+  };
+
+  if(getUser()) {
+    $rootScope.currentUser = getUser();
+  }
+
+  return {
+    login: login,
+    signup: signup,
+    logout: logout,
+    updateStocks: updateStocks,
+    updateNotes: updateNotes,
+    getUser: getUser
   };
 })
 
@@ -101,7 +247,25 @@ angular.module('ionic_udemy.services', [])
   return stockDetailsCache;
 })
 
-.factory('notesCacheservice', function(CacheFactory) {
+.factory('stockPriceCacheService', function(CacheFactory) {
+
+  var stockPriceCache;
+
+  if(!CacheFactory.get('stockPriceCache')) {
+    stockPriceCache = CacheFactory('stockPriceCache', {
+      maxAge: 5 * 1000,
+      deleteOnExpire: 'aggressive',
+      storageMode: 'localStorage'
+    });
+  }
+  else {
+    stockPriceCache = CacheFactory.get('stockPriceCache');
+  }
+
+  return stockPriceCache;
+})
+
+.factory('notesCacheService', function(CacheFactory) {
   var notesCache;
 
   if(!notesCache) {
@@ -116,7 +280,7 @@ angular.module('ionic_udemy.services', [])
   return notesCache;
 })
 
-.factory('stockDataService', function($q, $http, encodeURIService, stockDetailsCacheService) {
+.factory('stockDataService', function($q, $http, encodeURIService, stockDetailsCacheService, stockPriceCacheService) {
 
   var getDetailsData = function(ticker) {
     var deferred = $q.defer(),
@@ -149,21 +313,24 @@ angular.module('ionic_udemy.services', [])
 
     var getPriceData = function(ticker) {
 
-    var deferred = $q.defer(),
-    url = "http://finance.yahoo.com/webservice/v1/symbols/" + ticker + "/quote?format=json&view=detail";
+      var deferred = $q.defer(),
 
-    $http.get(url)
-              .success(function(json) {
-                var jsonData = json.list.resources[0].resource.fields;
-                deferred.resolve(jsonData);
-              })
-              .error(function(error) {
-                console.log("Price data error: " + error);
-                deferred.reject();
-              });
+      cacheKey = ticker,
 
-    return deferred.promise;
+      url = "http://finance.yahoo.com/webservice/v1/symbols/" + ticker + "/quote?format=json&view=detail";
 
+      $http.get(url)
+        .success(function(json) {
+          var jsonData = json.list.resources[0].resource.fields;
+          stockPriceCacheService.put(cacheKey, jsonData);
+          deferred.resolve(jsonData);
+        })
+        .error(function(error) {
+          console.log("Price data error: " + error);
+          deferred.reject();
+        });
+
+      return deferred.promise;
     };
 
    return {
@@ -239,34 +406,43 @@ angular.module('ionic_udemy.services', [])
 
 })
 
-.factory('notesService', function(notesCacheservice) {
+.factory('notesService', function(notesCacheService, userService) {
   return {
     getNotes: function(ticker) {
-      return notesCacheservice.get(ticker);
+      return notesCacheService.get(ticker);
     },
 
     addNote: function(ticker, note) {
 
       var stockNotes = [];
 
-      if(notesCacheservice.get(ticker)) {
-        stockNotes = notesCacheservice.get(ticker);
+      if(notesCacheService.get(ticker)) {
+        stockNotes = notesCacheService.get(ticker);
         stockNotes.push(note);
       }
       else {
         stockNotes.push(note);
       }
-      notesCacheservice.put(ticker, stockNotes);
+      notesCacheService.put(ticker, stockNotes);
+
+      if(userService.getUser()) {
+        var notes = notesCacheService.get(ticker);
+        userService.updateNotes(ticker, stockNotes);
+      }
     },
 
     deleteNote: function(ticker, index) {
 
       var stockNotes = [];
 
-      stockNotes = notesCacheservice.get(ticker);
+      stockNotes = notesCacheService.get(ticker);
       stockNotes.splice(index, 1);
-      notesCacheservice.put(ticker, stockNotes);
+      notesCacheService.put(ticker, stockNotes);
 
+      if(userService.getUser()) {
+        var notes = notesCacheService.get(ticker);
+        userService.updateNotes(ticker, stockNotes);
+      }
     }
   };
 })
@@ -347,7 +523,7 @@ angular.module('ionic_udemy.services', [])
   return myStocks;
 })
 
-.factory('followingStockService', function(myStocksCacheService, myStocksArrayService) {
+.factory('followingStockService', function(myStocksCacheService, myStocksArrayService, userService) {
   return {
     follow: function(ticker) {
 
@@ -355,6 +531,10 @@ angular.module('ionic_udemy.services', [])
 
       myStocksArrayService.push(stockToAdd);
       myStocksCacheService.put('myStocks', myStocksArrayService);
+
+      if(userService.getUser()) {
+        userService.updateStocks(myStocksArrayService);
+      }
 
     },
 
@@ -364,6 +544,10 @@ angular.module('ionic_udemy.services', [])
           myStocksArrayService.splice(i, 1);
           myStocksCacheService.remove('myStocks');
           myStocksCacheService.put('myStocks', myStocksArrayService);
+
+          if(userService.getUser()) {
+            userService.updateStocks(myStocksArrayService);
+          }
 
           break;
         }

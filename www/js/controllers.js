@@ -1,16 +1,43 @@
 angular.module('ionic_udemy.controllers', [])
 
-.controller('AppCtrl', ['$scope', 'modalService',
-  function($scope, modalService) {
+.controller('AppCtrl', ['$scope', 'modalService', 'userService',
+  function($scope, modalService, userService) {
 
   $scope.modalService = modalService;
 
+  $scope.logout = function() {
+    userService.logout();
+  };
+
 }])
 
-.controller('MyStocksCtrl', ['$scope', 'myStocksArrayService',
-  function($scope, myStocksArrayService) {
+.controller('MyStocksCtrl', ['$scope', 'myStocksArrayService', 'stockDataService', 'stockPriceCacheService', 'followingStockService',
+  function($scope, myStocksArrayService, stockDataService, stockPriceCacheService, followingStockService) {
 
-    $scope.myStocksArray = myStocksArrayService;
+    $scope.$on("$ionicView.afterEnter", function() {
+      $scope.getMyStocksData();
+    });
+
+    $scope.getMyStocksData = function() {
+
+      myStocksArrayService.forEach(function(stock) {
+
+        var promise = stockDataService.getPriceData(stock.ticker);
+
+        $scope.myStocksData = [];
+
+        promise.then(function(data) {
+          $scope.myStocksData.push(stockPriceCacheService.get(data.symbol));
+        });
+      });
+
+      $scope.$broadcast('scroll.refreshComplete');
+    };
+
+    $scope.unfollowStock = function(ticker) {
+      followingStockService.unfollow(ticker);
+      $scope.getMyStocksData();
+    };
 }])
 
 .controller('StockCtrl', ['$scope', '$stateParams', '$window', '$ionicPopup', 'followingStockService', 'stockDataService', 'dateService', 'chartDataService', 'notesService', 'newsService',
@@ -225,6 +252,7 @@ function($scope, $stateParams, $window, $ionicPopup, followingStockService, stoc
 
 
 }])
+
 .controller('SearchCtrl', ['$scope', '$state', 'modalService', 'searchService',
   function($scope, $state, modalService, searchService) {
 
@@ -251,6 +279,22 @@ function($scope, $stateParams, $window, $ionicPopup, followingStockService, stoc
 
 }])
 
+.controller('LoginSignupCtrl', ['$scope', 'modalService', 'userService',
+  function($scope, modalService, userService) {
 
+    $scope.user = {email: '', password: ''};
+
+    $scope.closeModal = function() {
+      modalService.closeModal();
+    };
+
+    $scope.signup = function(user) {
+      userService.signup(user);
+    };
+
+    $scope.login = function(user) {
+      userService.login(user);
+    };
+  }])
 
 ;

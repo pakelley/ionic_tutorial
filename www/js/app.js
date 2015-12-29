@@ -1,5 +1,6 @@
 angular.module('ionic_udemy',
 ['ionic',
+'firebase',
 'angular-cache',
 'nvd3',
 'nvChart',
